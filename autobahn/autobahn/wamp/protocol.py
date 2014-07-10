@@ -436,7 +436,8 @@ class ApplicationSession(BaseSession):
                   msg.kwargs[handler.details_arg] = types.EventDetails(publication = msg.publication,
                                                                        publisher = msg.publisher,
                                                                        metatopic = msg.metatopic,
-                                                                       session = msg.session)
+                                                                       session = msg.session
+                                                                       topic = msg.topic)
 
                try:
                   if handler.obj:

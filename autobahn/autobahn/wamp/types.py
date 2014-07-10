@@ -262,7 +262,7 @@ class EventDetails:
    Provides details on an event when calling an event handler
    previously registered.
    """
-   def __init__(self, publication, publisher = None, metatopic = None, session = None):
+   def __init__(self, publication, publisher = None, metatopic = None, session = None, topic = None):
       """
       Ctor.
 
@@ -274,11 +274,14 @@ class EventDetails:
       :type metatopic: str
       :param session: The session which generated this meta event.
       :type session: int
+      :param topic: The exact topic of this event.
+      :type topic: str
       """
       self.publication = publication
       self.publisher = publisher
       self.metatopic = metatopic
       self.session = session
+      self.topic = topic
 
 
 

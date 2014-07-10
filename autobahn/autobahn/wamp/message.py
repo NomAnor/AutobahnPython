@@ -1568,7 +1568,8 @@ class Event(Message):
    """
 
 
-   def __init__(self, subscription, publication, args = None, kwargs = None, publisher = None, metatopic = None, session = None):
+   def __init__(self, subscription, publication, args = None, kwargs = None, publisher = None,
+                metatopic = None, session = None, topic = None):
       """
       Message constructor.
 
@@ -1588,6 +1589,8 @@ class Event(Message):
       :type metatopic: str
       :param session: If present, the session which generated this meta event.
       :type session: int
+      :param topic: If present, the exact topic of this event.
+      :type topic: str
       """
       assert(type(subscription) in six.integer_types)
       assert(type(publication) in six.integer_types)
@@ -1596,6 +1599,7 @@ class Event(Message):
       assert(publisher is None or type(publisher) in six.integer_types)
       assert(metatopic is None or metatopic in [Subscribe.METATOPIC_ADD, Subscribe.METATOPIC_REMOVE])
       assert(session is None or type(session) in six.integer_types)
+      assert(topic is None or type(topic) == six.text_type)
 
       Message.__init__(self)
       self.subscription = subscription
@@ -1605,6 +1609,7 @@ class Event(Message):
       self.publisher = publisher
       self.metatopic = metatopic
       self.session = session
+      self.topic = topic
 
 
    @staticmethod
@@ -1666,13 +1671,22 @@ class Event(Message):
 
          session = detail_session
 
+      topic = None
+      if u'topic' in details:
+         detail_topic = details[u'topic']
+         if type(detail_topic) != six.text_type:
+            raise ProtocolError("invalid type {} for 'topic' detail in EVENT".format(type(detail_topic)))
+
+         topic = detail_topic
+
       obj = Event(subscription,
                   publication,
                   args = args,
                   kwargs = kwargs,
                   publisher = publisher,
                   metatopic = metatopic,
-                  session = session)
+                  session = session,
+                  topic = topic)
 
       return obj
 
@@ -1692,6 +1706,9 @@ class Event(Message):
       if self.session is not None:
          details[u'session'] = self.session
 
+      if self.topic is not None:
+         details[u'topic'] = self.topic
+
       if self.kwargs:
          return [Event.MESSAGE_TYPE, self.subscription, self.publication, details, self.args, self.kwargs]
       elif self.args:
@@ -1704,8 +1721,8 @@ class Event(Message):
       """
       Implements :func:`autobahn.wamp.interfaces.IMessage.__str__`
       """
-      return "WAMP EVENT Message (subscription = {}, publication = {}, args = {}, kwargs = {}, publisher = {}, metatopic = {}, session = {})".format(
-         self.subscription, self.publication, self.args, self.kwargs, self.publisher, self.metatopic, self.session)
+      return "WAMP EVENT Message (subscription = {}, publication = {}, args = {}, kwargs = {}, publisher = {}, metatopic = {}, session = {}, topic = {})".format(
+         self.subscription, self.publication, self.args, self.kwargs, self.publisher, self.metatopic, self.session, self.topic)
 
 
 
