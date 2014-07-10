@@ -373,7 +373,7 @@ class ApplicationSession(BaseSession):
 
       roles = [
          role.RolePublisherFeatures(),
-         role.RoleSubscriberFeatures(subscriber_metaevents = True),
+         role.RoleSubscriberFeatures(subscriber_metaevents = True, pattern_based_subscription = True),
          role.RoleCallerFeatures(),
          role.RoleCalleeFeatures()
       ]
@@ -436,7 +436,7 @@ class ApplicationSession(BaseSession):
                   msg.kwargs[handler.details_arg] = types.EventDetails(publication = msg.publication,
                                                                        publisher = msg.publisher,
                                                                        metatopic = msg.metatopic,
-                                                                       session = msg.session
+                                                                       session = msg.session,
                                                                        topic = msg.topic)
 
                try:
