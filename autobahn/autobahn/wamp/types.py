@@ -168,7 +168,7 @@ class HelloDetails:
 class SessionDetails:
    """
    Provides details for a WAMP session upon open.
-   
+
    @see: :func:`autobahn.wamp.interfaces.ISession.onJoin`
    """
 
@@ -196,7 +196,7 @@ class SessionDetails:
 class CloseDetails:
    """
    Provides details for a WAMP session upon open.
-   
+
    @see: :func:`autobahn.wamp.interfaces.ISession.onLeave`
    """
 
@@ -220,21 +220,40 @@ class SubscribeOptions:
    :func:`autobahn.wamp.interfaces.ISubscriber.subscribe`.
    """
 
-   def __init__(self, match = None, details_arg = None):
+   METATOPIC_ADD = u'wamp.metatopic.subscriber.add'
+   METATOPIC_REMOVE = u'wamp.metatopic.subscriber.remove'
+
+   def __init__(self, match = None, metaonly = None, metatopics = None, details_arg = None):
       """
       :param match: The topic matching method to be used for the subscription.
       :type match: str
+      :param metaonly: Send only meta events.
+      :type metaonly: bool
+      :param metatopics. The meta events to receive.
+      :type metatopics: list
       :param details_arg: When invoking the handler, provide event details
                           in this keyword argument to the callable.
       :type details_arg: str
       """
       assert(match is None or (type(match) == str and match in ['exact', 'prefix', 'wildcard']))
+      assert(metaonly is None or type(metaonly) == bool)
+      assert(metatopics is None or type(metatopics) == list)
       assert(details_arg is None or type(details_arg) == str)
 
       self.details_arg = details_arg
       if match and six.PY2 and type(match) == str:
          match = six.u(match)
-      self.options = {'match': match}
+
+      # Clean metatopics
+      if metatopics is not None:
+         metatopics = list(set(metatopics).intersection([self.METATOPIC_ADD, self.METATOPIC_REMOVE]))
+      if not metatopics:
+         metatopics = None
+
+      self.options = {
+         'match': match,
+         'metaonly': metaonly,
+         'metatopics': metatopics}
 
 
 
@@ -243,7 +262,7 @@ class EventDetails:
    Provides details on an event when calling an event handler
    previously registered.
    """
-   def __init__(self, publication, publisher = None):
+   def __init__(self, publication, publisher = None, metatopic = None, session = None):
       """
       Ctor.
 
@@ -251,9 +270,15 @@ class EventDetails:
       :type publication: int
       :param publisher: The WAMP session ID of the original publisher of this event.
       :type publisher: int
+      :param metatopic: The meta event type of this event.
+      :type metatopic: str
+      :param session: The session which generated this meta event.
+      :type session: int
       """
       self.publication = publication
       self.publisher = publisher
+      self.metatopic = metatopic
+      self.session = session
 
 
 

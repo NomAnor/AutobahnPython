@@ -1234,7 +1234,10 @@ class Subscribe(Message):
    MATCH_PREFIX = u'prefix'
    MATCH_WILDCARD = u'wildcard'
 
-   def __init__(self, request, topic, match = MATCH_EXACT):
+   METATOPIC_ADD = u'wamp.metatopic.subscriber.add'
+   METATOPIC_REMOVE = u'wamp.metatopic.subscriber.remove'
+
+   def __init__(self, request, topic, match = MATCH_EXACT, metaonly = None, metatopics = None):
       """
       Message constructor.
 
@@ -1249,11 +1252,15 @@ class Subscribe(Message):
       assert(type(topic) == six.text_type)
       assert(match is None or type(match) == six.text_type)
       assert(match is None or match in [self.MATCH_EXACT, self.MATCH_PREFIX, self.MATCH_WILDCARD])
+      assert(metaonly is None or type(metaonly) == bool)
+      assert(metatopics is None or type(metatopics) == list)
 
       Message.__init__(self)
       self.request = request
       self.topic = topic
       self.match = match
+      self.metaonly = metaonly
+      self.metatopics = metatopics
 
 
    @staticmethod
@@ -1290,7 +1297,26 @@ class Subscribe(Message):
 
          match = option_match
 
-      obj = Subscribe(request, topic, match)
+      metaonly = None
+      if u'metaonly' in options:
+         option_metaonly = options[u'metaonly']
+         if type(option_metaonly) != bool:
+            raise ProtocolError("invalid type {} for 'metaonly' option in SUBSCRIBE".format(type(option_metaonly)))
+
+         metaonly = option_metaonly
+
+      metatopics = None
+      if u'metatopics' in options:
+         for metatopic in options[u'metatopics']:
+            if not metatopic in [Subscribe.METATOPIC_ADD, Subscribe.METATOPIC_REMOVE]:
+               raise ProtocolError("invalid metatopic {} for 'metatopics' option in SUBSCRIBE".format(metatopic))
+
+            if type(metatopic) != six.text_type:
+               raise ProtocolError("invalid type {} for metatopic in 'metatopics' option in SUBSCRIBE".format(type(metatopic)))
+
+         metatopics = options[u'metatopics']
+
+      obj = Subscribe(request, topic, match, metaonly, metatopics)
 
       return obj
 
@@ -1304,6 +1330,12 @@ class Subscribe(Message):
       if self.match and self.match != Subscribe.MATCH_EXACT:
          options[u'match'] = self.match
 
+      if self.metaonly is not None:
+         options[u'metaonly'] = self.metaonly
+
+      if self.metatopics is not None:
+         options[u'metatopics'] = self.metatopics
+
       return [Subscribe.MESSAGE_TYPE, self.request, options, self.topic]
 
 
@@ -1311,7 +1343,8 @@ class Subscribe(Message):
       """
       Implements :func:`autobahn.wamp.interfaces.IMessage.__str__`
       """
-      return "WAMP SUBSCRIBE Message (request = {}, topic = {}, match = {})".format(self.request, self.topic, self.match)
+      return "WAMP SUBSCRIBE Message (request = {}, topic = {}, match = {}, metaonly = {}, metatopics = {})".format(
+         self.request, self.topic, self.match, self.metaonly, self.metatopics)
 
 
 
@@ -1535,7 +1568,7 @@ class Event(Message):
    """
 
 
-   def __init__(self, subscription, publication, args = None, kwargs = None, publisher = None):
+   def __init__(self, subscription, publication, args = None, kwargs = None, publisher = None, metatopic = None, session = None):
       """
       Message constructor.
 
@@ -1551,12 +1584,18 @@ class Event(Message):
       :type kwargs: dict
       :param publisher: If present, the WAMP session ID of the publisher of this event.
       :type publisher: str
+      :param metatopic: If present, the meta event type of this event.
+      :type metatopic: str
+      :param session: If present, the session which generated this meta event.
+      :type session: int
       """
       assert(type(subscription) in six.integer_types)
       assert(type(publication) in six.integer_types)
       assert(args is None or type(args) in [list, tuple])
       assert(kwargs is None or type(kwargs) == dict)
       assert(publisher is None or type(publisher) in six.integer_types)
+      assert(metatopic is None or metatopic in [Subscribe.METATOPIC_ADD, Subscribe.METATOPIC_REMOVE])
+      assert(session is None or type(session) in six.integer_types)
 
       Message.__init__(self)
       self.subscription = subscription
@@ -1564,6 +1603,8 @@ class Event(Message):
       self.args = args
       self.kwargs = kwargs
       self.publisher = publisher
+      self.metatopic = metatopic
+      self.session = session
 
 
    @staticmethod
@@ -1608,11 +1649,30 @@ class Event(Message):
 
          publisher = detail_publisher
 
+      metatopic = None
+      if u'metatopic' in details:
+         detail_metatopic = details[u'metatopic']
+         if type(detail_metatopic) != six.text_type:
+            raise ProtocolError("invalid type {} for 'metatopic' detail in EVENT".format(type(detail_metatopic)))
+
+         metatopic = detail_metatopic
+
+      session = None
+      if u'session' in details:
+
+         detail_session = details[u'session']
+         if type(detail_session) not in six.integer_types:
+            raise ProtocolError("invalid type {} for 'session' detail in EVENT".format(type(detail_session)))
+
+         session = detail_session
+
       obj = Event(subscription,
                   publication,
                   args = args,
                   kwargs = kwargs,
-                  publisher = publisher)
+                  publisher = publisher,
+                  metatopic = metatopic,
+                  session = session)
 
       return obj
 
@@ -1626,6 +1686,12 @@ class Event(Message):
       if self.publisher is not None:
          details[u'publisher'] = self.publisher
 
+      if self.metatopic is not None:
+         details[u'metatopic'] = self.metatopic
+
+      if self.session is not None:
+         details[u'session'] = self.session
+
       if self.kwargs:
          return [Event.MESSAGE_TYPE, self.subscription, self.publication, details, self.args, self.kwargs]
       elif self.args:
@@ -1638,7 +1704,8 @@ class Event(Message):
       """
       Implements :func:`autobahn.wamp.interfaces.IMessage.__str__`
       """
-      return "WAMP EVENT Message (subscription = {}, publication = {}, args = {}, kwargs = {}, publisher = {})".format(self.subscription, self.publication, self.args, self.kwargs, self.publisher)
+      return "WAMP EVENT Message (subscription = {}, publication = {}, args = {}, kwargs = {}, publisher = {}, metatopic = {}, session = {})".format(
+         self.subscription, self.publication, self.args, self.kwargs, self.publisher, self.metatopic, self.session)
 
 
 
