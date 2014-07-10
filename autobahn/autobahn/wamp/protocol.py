@@ -373,7 +373,7 @@ class ApplicationSession(BaseSession):
 
       roles = [
          role.RolePublisherFeatures(),
-         role.RoleSubscriberFeatures(),
+         role.RoleSubscriberFeatures(subscriber_metaevents = True),
          role.RoleCallerFeatures(),
          role.RoleCalleeFeatures()
       ]

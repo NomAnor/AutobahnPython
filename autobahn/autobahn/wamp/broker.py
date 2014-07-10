@@ -33,11 +33,13 @@ class SubscriptionOptions:
    """
    Subscription options used by the Broker to manage subscriptions
    """
-   def __init__(self):
-      pass
+   def __init__(self, metaonly = None, metatopics = None):
+      self.metaonly = metaonly if metaonly is not None else False
+      self.metatopics = metatopics if metatopics is not None else set()
 
    def __eq__(self, other):
-      return True
+      return (self.metaonly == other.metaonly) and \
+             (self.metatopics == other.metatopics)
 
 
 
@@ -90,7 +92,10 @@ class Broker:
       self._option_uri_strict = self._options.uri_check == types.RouterOptions.URI_CHECK_STRICT
 
       ## supported features from "WAMP Advanced Profile"
-      self._role_features = role.RoleBrokerFeatures(publisher_identification = True, subscriber_blackwhite_listing = True, publisher_exclusion = True)
+      self._role_features = role.RoleBrokerFeatures(publisher_identification = True,
+                                                    subscriber_blackwhite_listing = True,
+                                                    publisher_exclusion = True,
+                                                    subscriber_metaevents = True)
 
 
    def attach(self, session):
@@ -152,47 +157,48 @@ class Broker:
 
       if publish.topic in self._topic_to_subscriptions:
          for subscription in self._topic_to_subscriptions[publish.topic]:
-            ## initial list of receivers are all subscribers ..
-            ##
-            receivers = subscription.subscribers
+            if not subscription.options.metaonly:
+               ## initial list of receivers are all subscribers ..
+               ##
+               receivers = subscription.subscribers
 
-            ## filter by "eligible" receivers
-            ##
-            if publish.eligible:
-               eligible = []
-               for s in publish.eligible:
-                  if s in self._session_id_to_session:
-                     eligible.append(self._session_id_to_session[s])
+               ## filter by "eligible" receivers
+               ##
+               if publish.eligible:
+                  eligible = []
+                  for s in publish.eligible:
+                     if s in self._session_id_to_session:
+                        eligible.append(self._session_id_to_session[s])
 
-               receivers = set(eligible) & receivers
+                  receivers = set(eligible) & receivers
 
-            ## remove "excluded" receivers
-            ##
-            if publish.exclude:
-               exclude = []
-               for s in publish.exclude:
-                  if s in self._session_id_to_session:
-                     exclude.append(self._session_id_to_session[s])
-               if exclude:
-                  receivers = receivers - set(exclude)
+               ## remove "excluded" receivers
+               ##
+               if publish.exclude:
+                  exclude = []
+                  for s in publish.exclude:
+                     if s in self._session_id_to_session:
+                        exclude.append(self._session_id_to_session[s])
+                  if exclude:
+                     receivers = receivers - set(exclude)
 
-            ## if receivers is non-empty, dispatch event ..
-            ##
-            if receivers:
-               if publish.discloseMe:
-                  publisher = session._session_id
-               else:
-                  publisher = None
-               msg = message.Event(subscription.id,
-                                   publication,
-                                   args = publish.args,
-                                   kwargs = publish.kwargs,
-                                   publisher = publisher)
-               for receiver in receivers:
-                  if me_also or receiver != session:
-                     ## the subscribing session might have been lost in the meantime ..
-                     if receiver._transport:
-                        receiver._transport.send(msg)
+               ## if receivers is non-empty, dispatch event ..
+               ##
+               if receivers:
+                  if publish.discloseMe:
+                     publisher = session._session_id
+                  else:
+                     publisher = None
+                  msg = message.Event(subscription.id,
+                                      publication,
+                                      args = publish.args,
+                                      kwargs = publish.kwargs,
+                                      publisher = publisher)
+                  for receiver in receivers:
+                     if me_also or receiver != session:
+                        ## the subscribing session might have been lost in the meantime ..
+                        if receiver._transport:
+                           receiver._transport.send(msg)
 
 
    def processSubscribe(self, session, subscribe):
@@ -210,7 +216,8 @@ class Broker:
          session._transport.send(reply)
          return
 
-      options = SubscriptionOptions()
+      options = SubscriptionOptions(metaonly = subscribe.metaonly,
+                                    metatopics = subscribe.metatopics)
 
       if not subscribe.topic in self._topic_to_subscriptions:
          self._topic_to_subscriptions[subscribe.topic] = set()
@@ -239,6 +246,7 @@ class Broker:
 
       reply = message.Subscribed(subscribe.request, subscription.id)
       session._transport.send(reply)
+      self._send_metaevent(session, subscription, message.Subscribe.METATOPIC_ADD)
 
 
    def processUnsubscribe(self, session, unsubscribe):
@@ -273,6 +281,22 @@ class Broker:
 
             if not self.topic_to_subscriptions[subscription.topic]:
                del self.topic_to_subscriptions[subscription.topic]
+
+      self._send_metaevent(session, subscription, message.Subscribe.METATOPIC_REMOVE)
+
+
+   def _send_metaevent(self, session, origin_subscription, metatopic):
+      if origin_subscription.topic in self._topic_to_subscriptions and self._topic_to_subscriptions[origin_subscription.topic]:
+         publication = util.id()
+         for subscription in self._topic_to_subscriptions[origin_subscription.topic]:
+            if metatopic in subscription.options.metatopics:
+               event = message.Event(subscription.id,
+                                     publication,
+                                     metatopic = metatopic,
+                                     session = session._session_id)
+               for subscriber in subscription.subscribers:
+                  if not (subscription == origin_subscription and subscriber == session) and subscriber._transport:
+                     subscriber._transport.send(event)
 
 
 
